@@ -9,7 +9,7 @@ import gulp from 'gulp';
 // import through2 from 'through2';
 import gulpLoadPlugins from 'gulp-load-plugins';
 import http from 'http';
-// import open from 'open';
+import open from 'open';
 import lazypipe from 'lazypipe';
 import nodemon from 'nodemon';
 // import {Server as KarmaServer} from 'karma';
@@ -18,11 +18,13 @@ import runSequence from 'run-sequence';
 // import {Instrumenter} from 'isparta';
 // import webpack from 'webpack-stream';
 // import makeWebpackConfig from './webpack.make';
+import shell from 'gulp-shell';
+import watch from 'gulp-watch';
 
 var plugins = gulpLoadPlugins();
 var config;
 
-// const clientPath = 'client';
+const clientPath = 'client';
 const serverPath = 'server';
 const paths = {
     // client: {
@@ -77,19 +79,19 @@ function checkAppReady(cb) {
 }
 
 // Call page until first success
-function whenServerReady(cb) {
-    var serverReady = false;
-    var appReadyInterval = setInterval(() =>
-        checkAppReady((ready) => {
-            if (!ready || serverReady) {
-                return;
-            }
-            clearInterval(appReadyInterval);
-            serverReady = true;
-            cb();
-        }),
-        100);
-}
+// function whenServerReady(cb) {
+//     var serverReady = false;
+//     var appReadyInterval = setInterval(() =>
+//         checkAppReady((ready) => {
+//             if (!ready || serverReady) {
+//                 return;
+//             }
+//             clearInterval(appReadyInterval);
+//             serverReady = true;
+//             cb();
+//         }),
+//         100);
+// }
 
 /********************
  * Reusable pipelines
@@ -296,9 +298,12 @@ gulp.task('clean:tmp', () => del(['.tmp/**/*'], {dot: true}));
 
 gulp.task('start:server', () => {
     process.env.NODE_ENV = process.env.NODE_ENV || 'development';
-    config = require(`./${serverPath}/config/environment`);
-    nodemon(`-w ${serverPath} ${serverPath}`)
-        .on('log', onServerLog);
+    // config = require(`./${serverPath}/config/environment`);
+    // nodemon(`-w ${serverPath} ${serverPath}`)
+    //     .on('log', onServerLog);
+    config = require(`./${paths.dist}/${serverPath}/config/environment`);
+    nodemon(`-w ${paths.dist}/${serverPath} ${paths.dist}/${serverPath}`)
+      .on('log', onServerLog);
 });
 
 gulp.task('start:server:prod', () => {
@@ -322,36 +327,17 @@ gulp.task('start:server:prod', () => {
 //         .on('log', onServerLog);
 // });
 
-gulp.task('watch', () => {
-    var testFiles = _.union(paths.client.test, paths.server.test.unit, paths.server.test.integration);
-
-    plugins.watch(_.union(paths.server.scripts, testFiles))
-        .pipe(plugins.plumber())
-        .pipe(lintServerScripts());
-
-    plugins.watch(_.union(paths.server.test.unit, paths.server.test.integration))
-        .pipe(plugins.plumber())
-        .pipe(lintServerTestScripts());
-});
-
-gulp.task('serve', cb => {
-    runSequence(
-        [
-            'clean:tmp',
-            // 'lint:scripts',
-            'lint:scripts:server',
-            // 'inject',
-            // 'copy:fonts:dev',
-            'env:all',
-            // 'typings'
-        ],
-        // 'webpack:dev',
-        // ['start:server', 'start:client'],
-        'start:server',
-        'watch',
-        cb
-    );
-});
+// gulp.task('watch', () => {
+//     var testFiles = _.union(paths.client.test, paths.server.test.unit, paths.server.test.integration);
+//
+//     plugins.watch(_.union(paths.server.scripts, testFiles))
+//         .pipe(plugins.plumber())
+//         .pipe(lintServerScripts());
+//
+//     plugins.watch(_.union(paths.server.test.unit, paths.server.test.integration))
+//         .pipe(plugins.plumber())
+//         .pipe(lintServerTestScripts());
+// });
 
 // gulp.task('serve:debug', cb => {
 //     runSequence(
@@ -370,15 +356,53 @@ gulp.task('serve', cb => {
 //         cb
 //     );
 // });
+gulp.task('openBrowser', () => {
+  open('http://localhost:9000');
+});
+
+gulp.task('transpile:client', shell.task([
+  'ng build'
+], {cwd: clientPath}));
+
+gulp.task('move:client', ()=>{
+  return gulp.src(clientPath + "/dist/**").pipe(gulp.dest("dist/client"))
+});
+
+gulp.task('watch:client', ()=>{
+  watch(`${clientPath}/src`, function(){
+    runSequence('transpile:client', 'move:client');
+  });
+});
 
 gulp.task('serve:dist', cb => {
     runSequence(
         'build',
         'env:all',
         'env:prod',
-        // ['start:server:prod', 'start:client'],
         'start:server:prod',
         cb);
+});
+
+gulp.task('serve', cb => {
+  runSequence(
+      'build',
+    [
+      // 'clean:tmp',
+      // 'lint:scripts',
+      'lint:scripts:server',
+      // 'inject',
+      // 'copy:fonts:dev',
+      'env:all',
+      // 'typings'
+    ],
+  // 'webpack:dev',
+  // ['start:server', 'start:client'],
+      'start:server',
+      'watch:client',
+      'openBrowser',
+  // 'watch',
+      cb
+);
 });
 
 gulp.task('test', cb => {
@@ -484,6 +508,8 @@ gulp.task('build', cb => {
         //     'webpack:dist'
         // ],
         'copy:server',
+        'transpile:client',
+        'move:client',
         // 'revReplaceWebpack',
         cb);
 });
